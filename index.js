@@ -17,18 +17,18 @@
 
 (function() {
   var Marzipano = window.Marzipano;
-  var bowser = window.bowser;
+  var bowser    = window.bowser;
   var screenfull = window.screenfull;
-  var data = window.APP_DATA;
+  var data      = window.APP_DATA;
 
   // Grab elements from DOM.
-  var panoElement = document.querySelector('#pano');
-  var sceneNameElement = document.querySelector('#titleBar .sceneName');
-  var sceneListElement = document.querySelector('#sceneList');
-  var sceneElements = document.querySelectorAll('#sceneList .scene');
+  var panoElement            = document.querySelector('#pano');
+  var sceneNameElement       = document.querySelector('#titleBar .sceneName');
+  var sceneListElement       = document.querySelector('#sceneList');
+  var sceneElements          = document.querySelectorAll('#sceneList .scene');
   var sceneListToggleElement = document.querySelector('#sceneListToggle');
-  var autorotateToggleElement = document.querySelector('#autorotateToggle');
-  var fullscreenToggleElement = document.querySelector('#fullscreenToggle');
+  var autorotateToggleElement= document.querySelector('#autorotateToggle');
+  var fullscreenToggleElement= document.querySelector('#fullscreenToggle');
 
   // Detect desktop or mobile mode.
   if (window.matchMedia) {
@@ -48,91 +48,53 @@
     document.body.classList.add('desktop');
   }
 
-  // Detect whether we are on a touch device.
   document.body.classList.add('no-touch');
   window.addEventListener('touchstart', function() {
     document.body.classList.remove('no-touch');
     document.body.classList.add('touch');
   });
 
-  // Use tooltip fallback mode on IE < 11.
   if (bowser.msie && parseFloat(bowser.version) < 11) {
     document.body.classList.add('tooltip-fallback');
   }
 
-  // ─── Preparamos el canvas ANTES de que Marzipano lo cree ─────────────────
-  //
-  // Marzipano llama internamente a canvas.getContext('webgl').
-  // Interceptamos HTMLCanvasElement.prototype.getContext para que
-  // cualquier canvas que pida 'webgl' o 'webgl2' reciba automáticamente
-  // el atributo xrCompatible: true. Así el contexto que Marzipano usa
-  // ya es compatible con XR desde el principio — sin canvas separado,
-  // sin blit, sin conflictos.
-  //
-  var _origGetContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function(type, attrs) {
-    if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
-      attrs = attrs || {};
-      attrs.xrCompatible = true;
-    }
-    return _origGetContext.call(this, type, attrs);
-  };
-
   // Viewer options.
   var viewerOpts = {
-    controls: {
-      mouseViewMode: data.settings.mouseViewMode
-    }
+    controls: { mouseViewMode: data.settings.mouseViewMode }
   };
 
-  // Initialize viewer — ahora su canvas WebGL ya tiene xrCompatible: true
+  // Initialize Marzipano viewer (para desktop/móvil normal).
   var viewer = new Marzipano.Viewer(panoElement, viewerOpts);
 
-  // Restauramos getContext para no afectar otros elementos de la página
-  HTMLCanvasElement.prototype.getContext = _origGetContext;
-
   // Create scenes.
-  var scenes = data.scenes.map(function(data) {
+  var scenes = data.scenes.map(function(sceneData) {
     var urlPrefix = "tiles";
     var source = Marzipano.ImageUrlSource.fromString(
-      urlPrefix + "/" + data.id + "/{z}/{f}/{y}/{x}.jpg",
-      { cubeMapPreviewUrl: urlPrefix + "/" + data.id + "/preview.jpg" });
-    var geometry = new Marzipano.CubeGeometry(data.levels);
-
-    var limiter = Marzipano.RectilinearView.limit.traditional(data.faceSize, 100*Math.PI/180, 120*Math.PI/180);
-    var view = new Marzipano.RectilinearView(data.initialViewParameters, limiter);
+      urlPrefix + "/" + sceneData.id + "/{z}/{f}/{y}/{x}.jpg",
+      { cubeMapPreviewUrl: urlPrefix + "/" + sceneData.id + "/preview.jpg" });
+    var geometry = new Marzipano.CubeGeometry(sceneData.levels);
+    var limiter  = Marzipano.RectilinearView.limit.traditional(
+      sceneData.faceSize, 100*Math.PI/180, 120*Math.PI/180);
+    var view     = new Marzipano.RectilinearView(sceneData.initialViewParameters, limiter);
 
     var scene = viewer.createScene({
-      source: source,
-      geometry: geometry,
-      view: view,
-      pinFirstLevel: true
+      source: source, geometry: geometry, view: view, pinFirstLevel: true
     });
 
-    // Create link hotspots.
-    data.linkHotspots.forEach(function(hotspot) {
+    sceneData.linkHotspots.forEach(function(hotspot) {
       var element = createLinkHotspotElement(hotspot);
       scene.hotspotContainer().createHotspot(element, { yaw: hotspot.yaw, pitch: hotspot.pitch });
     });
-
-    // Create info hotspots.
-    data.infoHotspots.forEach(function(hotspot) {
+    sceneData.infoHotspots.forEach(function(hotspot) {
       var element = createInfoHotspotElement(hotspot);
       scene.hotspotContainer().createHotspot(element, { yaw: hotspot.yaw, pitch: hotspot.pitch });
     });
 
-    return {
-      data: data,
-      scene: scene,
-      view: view
-    };
+    return { data: sceneData, scene: scene, view: view };
   });
 
-  // Set up autorotate, if enabled.
   var autorotate = Marzipano.autorotate({
-    yawSpeed: 0.03,
-    targetPitch: 0,
-    targetFov: Math.PI/2
+    yawSpeed: 0.03, targetPitch: 0, targetFov: Math.PI/2
   });
   if (data.settings.autorotateEnabled) {
     autorotateToggleElement.classList.add('enabled');
@@ -140,70 +102,58 @@
 
   autorotateToggleElement.addEventListener('click', toggleAutorotate);
 
-  // Set up fullscreen mode, if supported.
   if (screenfull.enabled && data.settings.fullscreenButton) {
     document.body.classList.add('fullscreen-enabled');
-    fullscreenToggleElement.addEventListener('click', function() {
-      screenfull.toggle();
-    });
+    fullscreenToggleElement.addEventListener('click', function() { screenfull.toggle(); });
     screenfull.on('change', function() {
-      if (screenfull.isFullscreen) {
-        fullscreenToggleElement.classList.add('enabled');
-      } else {
-        fullscreenToggleElement.classList.remove('enabled');
-      }
+      if (screenfull.isFullscreen) fullscreenToggleElement.classList.add('enabled');
+      else fullscreenToggleElement.classList.remove('enabled');
     });
   } else {
     document.body.classList.add('fullscreen-disabled');
   }
 
   sceneListToggleElement.addEventListener('click', toggleSceneList);
-
-  if (!document.body.classList.contains('mobile')) {
-    showSceneList();
-  }
+  if (!document.body.classList.contains('mobile')) showSceneList();
 
   scenes.forEach(function(scene) {
     var el = document.querySelector('#sceneList .scene[data-id="' + scene.data.id + '"]');
     el.addEventListener('click', function() {
       switchScene(scene);
-      if (document.body.classList.contains('mobile')) {
-        hideSceneList();
-      }
+      if (document.body.classList.contains('mobile')) hideSceneList();
     });
   });
 
-  // DOM elements for view controls.
-  var viewUpElement = document.querySelector('#viewUp');
-  var viewDownElement = document.querySelector('#viewDown');
-  var viewLeftElement = document.querySelector('#viewLeft');
+  var viewUpElement    = document.querySelector('#viewUp');
+  var viewDownElement  = document.querySelector('#viewDown');
+  var viewLeftElement  = document.querySelector('#viewLeft');
   var viewRightElement = document.querySelector('#viewRight');
-  var viewInElement = document.querySelector('#viewIn');
-  var viewOutElement = document.querySelector('#viewOut');
+  var viewInElement    = document.querySelector('#viewIn');
+  var viewOutElement   = document.querySelector('#viewOut');
 
-  var velocity = 0.7;
-  var friction = 3;
-
+  var velocity = 0.7, friction = 3;
   var controls = viewer.controls();
-  controls.registerMethod('upElement',    new Marzipano.ElementPressControlMethod(viewUpElement,     'y', -velocity, friction), true);
-  controls.registerMethod('downElement',  new Marzipano.ElementPressControlMethod(viewDownElement,   'y',  velocity, friction), true);
-  controls.registerMethod('leftElement',  new Marzipano.ElementPressControlMethod(viewLeftElement,   'x', -velocity, friction), true);
-  controls.registerMethod('rightElement', new Marzipano.ElementPressControlMethod(viewRightElement,  'x',  velocity, friction), true);
+  controls.registerMethod('upElement',    new Marzipano.ElementPressControlMethod(viewUpElement,    'y', -velocity, friction), true);
+  controls.registerMethod('downElement',  new Marzipano.ElementPressControlMethod(viewDownElement,  'y',  velocity, friction), true);
+  controls.registerMethod('leftElement',  new Marzipano.ElementPressControlMethod(viewLeftElement,  'x', -velocity, friction), true);
+  controls.registerMethod('rightElement', new Marzipano.ElementPressControlMethod(viewRightElement, 'x',  velocity, friction), true);
   controls.registerMethod('inElement',    new Marzipano.ElementPressControlMethod(viewInElement,  'zoom', -velocity, friction), true);
   controls.registerMethod('outElement',   new Marzipano.ElementPressControlMethod(viewOutElement, 'zoom',  velocity, friction), true);
 
-  // ─── WebXR ────────────────────────────────────────────────────────────────
+  // ─── VR con Three.js WebXR ───────────────────────────────────────────────
+  //
+  // En modo VR no usamos Marzipano para renderizar.
+  // Cargamos Three.js dinámicamente, creamos una esfera 360° con la imagen
+  // de preview de la escena activa, y dejamos que Three.js + WebXR
+  // manejen el render estéreo y el head tracking nativamente.
+  //
   var vrButton  = document.getElementById("vrToggle");
-  var xrSession = null;
-  var prevHeadYaw   = null;
-  var prevHeadPitch = null;
+  var vrOverlay = null; // canvas Three.js que cubre la pantalla en modo VR
 
   vrButton.addEventListener("click", function() {
 
-    if (xrSession) { xrSession.end(); return; }
-
     if (!navigator.xr) {
-      // Fallback original en dispositivos sin WebXR
+      // Sin WebXR: fallback original
       if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock("landscape");
       }
@@ -216,118 +166,127 @@
 
     navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
       if (!supported) { panoElement.requestFullscreen(); return; }
-
-      navigator.xr.requestSession('immersive-vr', {
-        requiredFeatures: ['local']
-      }).then(function(session) {
-
-        xrSession = session;
-        vrButton.textContent = "✕ VR";
-        vrButton.classList.add('enabled');
-        stopAutorotate();
-        prevHeadYaw = null;
-        prevHeadPitch = null;
-
-        // Obtenemos el canvas y contexto GL que Marzipano ya creó
-        // (ahora tiene xrCompatible: true gracias al patch de arriba)
-        var marzCanvas = panoElement.querySelector('canvas');
-        var gl = marzCanvas.getContext('webgl')
-               || marzCanvas.getContext('webgl2');
-
-        // Hacemos el contexto compatible con XR (por si acaso)
-        var makeCompatible = gl.makeXRCompatible
-          ? gl.makeXRCompatible()
-          : Promise.resolve();
-
-        makeCompatible.then(function() {
-          var xrLayer = new XRWebGLLayer(session, gl);
-          session.updateRenderState({ baseLayer: xrLayer });
-
-          session.requestReferenceSpace('local').then(function(refSpace) {
-
-            var SPEED    = 0.03;
-            var DEADZONE = 0.15;
-
-            function onXRFrame(time, frame) {
-              session.requestAnimationFrame(onXRFrame);
-
-              var pose = frame.getViewerPose(refSpace);
-              if (!pose) return;
-
-              // Bind al framebuffer de XR para que Marzipano pinte ahí
-              gl.bindFramebuffer(gl.FRAMEBUFFER, xrLayer.framebuffer);
-
-              // Forzamos un render de Marzipano en este frame
-              try {
-                viewer.stage().render();
-              } catch(e) {
-                // Si render() no existe en esta versión, Marzipano
-                // renderiza solo en su propio rAF — igual funciona
-                // porque comparte el mismo contexto GL
-              }
-
-              // Head tracking: movimiento de cabeza → vista Marzipano
-              if (pose.views.length > 0) {
-                var m = pose.views[0].transform.matrix;
-                var pitch = Math.asin(Math.max(-1, Math.min(1, -m[9])));
-                var yaw   = Math.atan2(m[8], m[10]);
-
-                if (prevHeadYaw !== null) {
-                  var activeScene = getActiveScene();
-                  if (activeScene) {
-                    var v = activeScene.view;
-                    v.setYaw(v.yaw() + (yaw - prevHeadYaw));
-                    v.setPitch(Math.max(-Math.PI/2,
-                      Math.min(Math.PI/2, v.pitch() + (pitch - prevHeadPitch))));
-                  }
-                }
-                prevHeadYaw   = yaw;
-                prevHeadPitch = pitch;
-              }
-
-              // Joysticks → rotación manual
-              session.inputSources.forEach(function(source) {
-                if (!source.gamepad) return;
-                var axes = source.gamepad.axes;
-                var dx = (axes[2] != null) ? axes[2] : (axes[0] || 0);
-                var dy = (axes[3] != null) ? axes[3] : (axes[1] || 0);
-                if (Math.abs(dx) < DEADZONE) dx = 0;
-                if (Math.abs(dy) < DEADZONE) dy = 0;
-                if (dx === 0 && dy === 0) return;
-
-                var activeScene = getActiveScene();
-                if (!activeScene) return;
-                var v = activeScene.view;
-                v.setYaw(v.yaw() + dx * SPEED);
-                v.setPitch(Math.max(-Math.PI/2,
-                  Math.min(Math.PI/2, v.pitch() - dy * SPEED)));
-              });
-            }
-
-            session.requestAnimationFrame(onXRFrame);
-          });
-        });
-
-        session.addEventListener('end', function() {
-          xrSession = null;
-          vrButton.textContent = "VR";
-          vrButton.classList.remove('enabled');
-          prevHeadYaw = null;
-          prevHeadPitch = null;
-          // Restauramos el framebuffer normal de Marzipano
-          var marzCanvas2 = panoElement.querySelector('canvas');
-          var gl2 = marzCanvas2
-            ? (marzCanvas2.getContext('webgl') || marzCanvas2.getContext('webgl2'))
-            : null;
-          if (gl2) gl2.bindFramebuffer(gl2.FRAMEBUFFER, null);
-        });
-
-      }).catch(function(err) {
-        console.error('[WebXR] Error al iniciar sesión:', err);
-        alert('Error VR: ' + err.message);
-      });
+      loadThreeAndStartVR();
     });
   });
+
+  function loadThreeAndStartVR() {
+    // Cargamos Three.js desde CDN si no está ya cargado
+    if (window.THREE) { startVR(); return; }
+
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    script.onload = function() { startVR(); };
+    script.onerror = function() {
+      alert('No se pudo cargar Three.js. Revisa tu conexión.');
+    };
+    document.head.appendChild(script);
+  }
+
+  function getActiveSceneImageUrl() {
+    // Obtenemos la URL del preview de la escena activa para usarla en la esfera VR.
+    // Marzipano Tool guarda previews en tiles/{id}/preview.jpg
+    var activeScene = getActiveScene();
+    if (!activeScene) return null;
+    return "tiles/" + activeScene.data.id + "/preview.jpg";
+  }
+
+  function startVR() {
+    var THREE = window.THREE;
+    stopAutorotate();
+
+    // Creamos el canvas de Three.js encima de todo
+    vrOverlay = document.createElement('canvas');
+    Object.assign(vrOverlay.style, {
+      position: 'fixed',
+      top: '0', left: '0',
+      width: '100%', height: '100%',
+      zIndex: '99999',
+      background: '#000'
+    });
+    document.body.appendChild(vrOverlay);
+
+    // Renderer Three.js con WebXR habilitado
+    var renderer = new THREE.WebGLRenderer({
+      canvas: vrOverlay,
+      antialias: false,
+      alpha: false
+    });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+
+    // Escena Three.js: esfera invertida con la textura 360°
+    var threeScene  = new THREE.Scene();
+    var threeCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+
+    var imgUrl = getActiveSceneImageUrl();
+    var texture = new THREE.TextureLoader().load(imgUrl);
+
+    // Esfera grande con normales invertidas para ver desde adentro
+    var geometry = new THREE.SphereGeometry(50, 64, 32);
+    geometry.scale(-1, 1, 1); // invertir para ver desde adentro
+
+    var material = new THREE.MeshBasicMaterial({ map: texture });
+    var sphere   = new THREE.Mesh(geometry, material);
+    threeScene.add(sphere);
+
+    // Sincronizamos la rotación inicial con la vista actual de Marzipano
+    var activeScene = getActiveScene();
+    if (activeScene) {
+      sphere.rotation.y = -activeScene.view.yaw();
+    }
+
+    // Iniciamos la sesión WebXR
+    navigator.xr.requestSession('immersive-vr', {
+      requiredFeatures: ['local']
+    }).then(function(session) {
+
+      vrButton.textContent = "✕ VR";
+      vrButton.classList.add('enabled');
+
+      renderer.xr.setSession(session);
+
+      var SPEED    = 0.03;
+      var DEADZONE = 0.15;
+
+      // Loop de render — Three.js maneja el framebuffer XR automáticamente
+      renderer.setAnimationLoop(function() {
+        // Joystick input para rotar la esfera
+        if (session.inputSources) {
+          session.inputSources.forEach(function(source) {
+            if (!source.gamepad) return;
+            var axes = source.gamepad.axes;
+            var dx = (axes[2] != null) ? axes[2] : (axes[0] || 0);
+            if (Math.abs(dx) < DEADZONE) dx = 0;
+            if (dx !== 0) sphere.rotation.y -= dx * SPEED;
+          });
+        }
+
+        renderer.render(threeScene, threeCamera);
+      });
+
+      session.addEventListener('end', function() {
+        renderer.setAnimationLoop(null);
+        renderer.dispose();
+        if (vrOverlay && vrOverlay.parentNode) {
+          vrOverlay.parentNode.removeChild(vrOverlay);
+        }
+        vrOverlay = null;
+        vrButton.textContent = "VR";
+        vrButton.classList.remove('enabled');
+      });
+
+    }).catch(function(err) {
+      // Limpiamos si falla
+      if (vrOverlay && vrOverlay.parentNode) {
+        vrOverlay.parentNode.removeChild(vrOverlay);
+      }
+      vrOverlay = null;
+      console.error('[WebXR] Error:', err);
+      alert('Error VR: ' + err.message);
+    });
+  }
 
   function getActiveScene() {
     for (var i = 0; i < scenes.length; i++) {
@@ -381,9 +340,7 @@
   }
 
   function startAutorotate() {
-    if (!autorotateToggleElement.classList.contains('enabled')) {
-      return;
-    }
+    if (!autorotateToggleElement.classList.contains('enabled')) return;
     viewer.startMovement(autorotate);
     viewer.setIdleMovement(3000, autorotate);
   }
@@ -412,10 +369,9 @@
     icon.src = 'img/link.png';
     icon.classList.add('link-hotspot-icon');
 
-    var transformProperties = [ '-ms-transform', '-webkit-transform', 'transform' ];
+    var transformProperties = ['-ms-transform', '-webkit-transform', 'transform'];
     for (var i = 0; i < transformProperties.length; i++) {
-      var property = transformProperties[i];
-      icon.style[property] = 'rotate(' + hotspot.rotation + 'rad)';
+      icon.style[transformProperties[i]] = 'rotate(' + hotspot.rotation + 'rad)';
     }
 
     wrapper.addEventListener('click', function() {
@@ -431,7 +387,6 @@
 
     wrapper.appendChild(icon);
     wrapper.appendChild(tooltip);
-
     return wrapper;
   }
 
@@ -489,13 +444,11 @@
     modal.querySelector('.info-hotspot-close-wrapper').addEventListener('click', toggle);
 
     stopTouchAndScrollEventPropagation(wrapper);
-
     return wrapper;
   }
 
   function stopTouchAndScrollEventPropagation(element) {
-    var eventList = [ 'touchstart', 'touchmove', 'touchend', 'touchcancel',
-                      'wheel', 'mousewheel' ];
+    var eventList = ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel', 'mousewheel'];
     for (var i = 0; i < eventList.length; i++) {
       element.addEventListener(eventList[i], function(event) {
         event.stopPropagation();
@@ -505,18 +458,14 @@
 
   function findSceneById(id) {
     for (var i = 0; i < scenes.length; i++) {
-      if (scenes[i].data.id === id) {
-        return scenes[i];
-      }
+      if (scenes[i].data.id === id) return scenes[i];
     }
     return null;
   }
 
   function findSceneDataById(id) {
     for (var i = 0; i < data.scenes.length; i++) {
-      if (data.scenes[i].id === id) {
-        return data.scenes[i];
-      }
+      if (data.scenes[i].id === id) return data.scenes[i];
     }
     return null;
   }
