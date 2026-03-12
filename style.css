@@ -828,3 +828,40 @@ body.view-control-buttons .viewControlButton {
 .viewControlButton-6 {
   margin-left: 105px;
 }
+
+/* ─── Botón VR ─────────────────────────────────── */
+#controls {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+}
+
+#vrToggle {
+  display: block;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  color: #fff;
+  background-color: rgba(26, 115, 232, 0.9);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  -webkit-transition: background-color 0.15s;
+  transition: background-color 0.15s;
+}
+
+#vrToggle:hover {
+  background-color: rgba(21, 87, 176, 0.95);
+}
+
+#vrToggle.enabled {
+  background-color: rgba(211, 47, 47, 0.9);
+}
+
+/* En mobile un poco más grande para tocarlo fácil */
+.mobile #vrToggle {
+  padding: 16px 26px;
+  font-size: 17px;
+}

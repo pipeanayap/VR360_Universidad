@@ -178,6 +178,120 @@
   controls.registerMethod('inElement',    new Marzipano.ElementPressControlMethod(viewInElement,  'zoom', -velocity, friction), true);
   controls.registerMethod('outElement',   new Marzipano.ElementPressControlMethod(viewOutElement, 'zoom',  velocity, friction), true);
 
+  // ─── WebXR para Meta Quest ─────────────────────────────────────────────────
+  var vrButton = document.getElementById("vrToggle");
+  var xrSession = null;
+
+  vrButton.addEventListener("click", function() {
+
+    // Si hay sesión activa, salir
+    if (xrSession) {
+      xrSession.end();
+      return;
+    }
+
+    // Fallback para dispositivos sin WebXR (comportamiento original)
+    if (!navigator.xr) {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape");
+      }
+      panoElement.requestFullscreen();
+      if (window.DeviceOrientationEvent) {
+        viewer.controls().enableMethod('deviceOrientation');
+      }
+      return;
+    }
+
+    navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
+      if (!supported) {
+        // Fallback: pantalla completa normal
+        panoElement.requestFullscreen();
+        return;
+      }
+
+      // Obtener el canvas WebGL de Marzipano
+      var canvas = panoElement.querySelector('canvas');
+      if (!canvas) {
+        console.error('[WebXR] canvas no encontrado dentro de #pano');
+        return;
+      }
+
+      var gl = canvas.getContext('webgl',  { xrCompatible: true })
+             || canvas.getContext('webgl2', { xrCompatible: true });
+      if (!gl) {
+        console.error('[WebXR] No se pudo obtener contexto WebGL xrCompatible');
+        return;
+      }
+
+      navigator.xr.requestSession('immersive-vr', {
+        requiredFeatures: ['local']
+      }).then(function(session) {
+
+        xrSession = session;
+        vrButton.textContent = "✕ VR";
+        vrButton.classList.add('enabled');
+        stopAutorotate();
+
+        var layer = new XRWebGLLayer(session, gl);
+        session.updateRenderState({ baseLayer: layer });
+
+        session.requestReferenceSpace('local').then(function() {
+
+          var SPEED   = 0.03;
+          var DEADZONE = 0.15;
+
+          function onXRFrame() {
+            session.requestAnimationFrame(onXRFrame);
+
+            // Joystick de controladores → rotar la vista de Marzipano
+            session.inputSources.forEach(function(source) {
+              if (!source.gamepad) return;
+
+              var axes = source.gamepad.axes;
+              // Quest: joystick izquierdo  → axes[2] (H) y axes[3] (V)
+              //        joystick derecho    → axes[0] (H) y axes[1] (V)
+              var dx = (axes[2] != null) ? axes[2] : (axes[0] || 0);
+              var dy = (axes[3] != null) ? axes[3] : (axes[1] || 0);
+
+              if (Math.abs(dx) < DEADZONE) dx = 0;
+              if (Math.abs(dy) < DEADZONE) dy = 0;
+              if (dx === 0 && dy === 0) return;
+
+              // Vista de la escena activa
+              var activeScene = null;
+              for (var i = 0; i < scenes.length; i++) {
+                if (scenes[i].scene === viewer.scene()) {
+                  activeScene = scenes[i];
+                  break;
+                }
+              }
+              if (!activeScene) return;
+
+              var view = activeScene.view;
+              view.setYaw(view.yaw() + dx * SPEED);
+              view.setPitch(
+                Math.max(-Math.PI / 2,
+                  Math.min(Math.PI / 2, view.pitch() - dy * SPEED))
+              );
+            });
+          }
+
+          session.requestAnimationFrame(onXRFrame);
+        });
+
+        session.addEventListener('end', function() {
+          xrSession = null;
+          vrButton.textContent = "VR";
+          vrButton.classList.remove('enabled');
+        });
+
+      }).catch(function(err) {
+        console.error('[WebXR] Error al iniciar sesión VR:', err);
+      });
+    });
+  });
+  // ──────────────────────────────────────────────────────────────────────────
+
   function sanitize(s) {
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;');
   }
@@ -357,8 +471,7 @@
     return wrapper;
   }
 
-  // Prevent touch and scroll events from reaching the parent element.
-  function stopTouchAndScrollEventPropagation(element, eventList) {
+  function stopTouchAndScrollEventPropagation(element) {
     var eventList = [ 'touchstart', 'touchmove', 'touchend', 'touchcancel',
                       'wheel', 'mousewheel' ];
     for (var i = 0; i < eventList.length; i++) {
